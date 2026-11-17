@@ -1,6 +1,6 @@
 // 여백 독서노트 — 오프라인에서도 앱 화면이 열리도록 하는 서비스 워커
 // 기록 데이터는 여기서 다루지 않습니다 (기록은 브라우저 IndexedDB에 따로 저장됨).
-const SHELL = 'yeobaek-shell-v1';
+const SHELL = 'yeobaek-shell-v2';
 const FONTS = 'yeobaek-fonts-v1';
 const IMGS = 'yeobaek-covers-v1';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
@@ -32,9 +32,13 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // 같은 주소의 아이콘·매니페스트: 저장본 우선
+  // 같은 주소의 아이콘·매니페스트: 저장본을 바로 쓰고, 뒤에서 새 판으로 갈아둠
   if (url.origin === self.location.origin) {
-    e.respondWith(caches.match(req).then(hit => hit || fetch(req)));
+    e.respondWith(caches.open(SHELL).then(async c => {
+      const hit = await c.match(req, { ignoreSearch: true });
+      const net = fetch(req).then(res => { if (res.ok) c.put(req, res.clone()); return res; }).catch(() => hit);
+      return hit || net;
+    }));
     return;
   }
 

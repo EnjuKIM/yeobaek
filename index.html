@@ -483,7 +483,8 @@ function setTimer(t){try{t?localStorage.setItem(TIMER_KEY,JSON.stringify(t)):loc
 function timerMs(t){return t?Math.max(0,(t.acc||0)+(t.paused?0:Date.now()-t.startedAt)):0}
 function timerMin(t){return Math.max(1,Math.round(timerMs(t)/60000))}
 function fmtClock(ms){const s=Math.floor(ms/1000),h=Math.floor(s/3600);return(h?h+':':'')+pad(Math.floor(s%3600/60))+':'+pad(s%60)}
-function startTimer(id){const t=getTimer();if(t&&t.bookId!==id&&!confirm('다른 책의 타이머가 진행 중입니다. 이 책으로 새로 시작할까요?'))return false;setTimer({bookId:id,startedAt:Date.now(),acc:0,paused:false,goal:dailyGoal(),mark:0,done:false});return true}
+function startTimer(id){const t=getTimer();if(t&&t.bookId!==id&&!confirm('다른 책의 타이머가 진행 중입니다. 이 책으로 새로 시작할까요?'))return false;// 오늘 이미 읽은 시간이 있으면 하루 목표까지 남은 시간부터 시작
+const dg=dailyGoal(),left=dg-minutesOn(today()),fill=left>0&&left<dg;setTimer({bookId:id,startedAt:Date.now(),acc:0,paused:false,goal:fill?left:dg,fill,mark:0,done:false,dayDone:left<=0});return true}
 function renderTimer(){const t=getTimer(),pill=$('#timerPill'),b=t&&findBook(t.bookId);focusTick(t,b);dailyTick();if(!b){pill.classList.add('hidden');return}const ms=timerMs(t),g=tGoal(t),txt=g&&!t.done?fmtClock(Math.max(0,g*60000-ms)):(g?'+'+fmtClock(ms-g*60000):fmtClock(ms));$('#pillDial').innerHTML=miniDial(t);$('#timerText').textContent=txt;$('#timerBook').textContent=b.title;$('#timerPause').textContent=t.paused?'▶':'❚❚';$('#timerPause').setAttribute('aria-label',t.paused?'다시 시작':'일시정지');pill.style.opacity=t.paused?'.85':'';pill.classList.remove('hidden');$$('[data-now-timer]').forEach(el=>{el.textContent=(t.paused?'❚❚ ':'⏱ ')+txt})}
 $('#timerStart').onclick=()=>{if(startTimer($('#lBook').value)){closeModal('#logModal');openFocus()}};
 $('#timerPause').onclick=()=>{const t=getTimer();if(!t)return;setTimer(t.paused?{...t,startedAt:Date.now(),paused:false}:{...t,acc:timerMs(t),paused:true})};
@@ -510,27 +511,29 @@ function chime(){try{unlockAudio();if(!audioCtx)return;const now=audioCtx.curren
 function openFocus(){const t=getTimer();if(!t||!findBook(t.bookId))return;unlockAudio();$('#fcParty').classList.add('hidden');openModal('#focusModal');keepAwake(true);renderTimer()}
 function closeFocus(){closeModal('#focusModal');keepAwake(false)}
 function cheer(msg){const el=$('#fcCheer');el.textContent=msg;el.classList.add('on');clearTimeout(fcCheerTimer);fcCheerTimer=setTimeout(()=>el.classList.remove('on'),6000);if(!isOpen('#focusModal'))notify(msg)}
-function party(t){const g=tGoal(t),dm=todayMinutes(),dg=dailyGoal(),met=dm>=dg,st=streakDays();try{navigator.vibrate&&navigator.vibrate([180,90,180,90,320])}catch(e){}chime();
-$('#fcPartyTitle').textContent=met?`오늘의 ${dg}분 달성!`:`${g}분 집중 완료!`;$('#fcPartyText').innerHTML=(met?(st>1?`🔥 <b>${st}일 연속</b> 달성 중이에요.`:'첫 도장을 찍었어요. 내일도 이어가 봐요.'):`오늘 ${dm}분 읽었어요. 목표까지 ${dg-dm}분 남았어요.`)+'<br>더 읽으면 보너스 시간으로 이어서 세요.';
+function party(t,dayOnly){const g=tGoal(t),dm=todayMinutes(),dg=dailyGoal(),met=dm>=dg,st=streakDays();try{navigator.vibrate&&navigator.vibrate([180,90,180,90,320])}catch(e){}chime();
+$('#fcPartyTitle').textContent=met?`오늘의 ${dg}분 달성!`:`${g}분 집중 완료!`;$('#fcPartyText').innerHTML=(met?(st>1?`🔥 <b>${st}일 연속</b> 달성 중이에요.`:'첫 도장을 찍었어요. 내일도 이어가 봐요.'):`오늘 ${dm}분 읽었어요. 목표까지 ${dg-dm}분 남았어요.`)+(dayOnly?'<br>고른 집중 시간까지 타이머는 계속 흘러가요.':'<br>더 읽으면 보너스 시간으로 이어서 세요.');
 if(isOpen('#focusModal'))$('#fcParty').classList.remove('hidden');else notify(`🎉 ${$('#fcPartyTitle').textContent} 계속 읽으면 보너스 시간으로 이어져요.`)}
 function focusTick(t,b){if(!t||!b){if(isOpen('#focusModal'))closeFocus();else if(wakeLock)keepAwake(false);return}
 if(!isOpen('#focusModal')&&wakeLock)keepAwake(false);
 const ms=timerMs(t),g=tGoal(t),min=Math.floor(ms/60000);let ch=false;
-if(!t.paused&&g&&!t.done&&ms>=g*60000){t.done=true;ch=true;saveTimerRaw(t);party(t)}
+if(!t.paused&&g&&!t.done&&ms>=g*60000){t.done=true;ch=true;if(todayMinutes()>=dailyGoal())t.dayDone=true;saveTimerRaw(t);party(t)}
+// 타이머 목표와 별개로, 오늘 합계가 하루 목표를 넘는 순간도 축하 (예: 45분을 골랐는데 30분째에 하루 목표 달성)
+if(!ch&&!t.paused&&!t.dayDone){const before=minutesOn(today());if(before<dailyGoal()&&before+min>=dailyGoal()){t.dayDone=true;ch=true;saveTimerRaw(t);party(t,true)}}
 const step=Math.floor(min/10);if(!t.paused&&step>num(t.mark)){t.mark=step;saveTimerRaw(t);if(!ch&&(!g||min<g))cheer(CHEERS[Math.min(step,CHEERS.length)-1]||`${min}분째 읽는 중이에요`)}
 if(!isOpen('#focusModal'))return;
 const s=dialState(t),col=s.free||s.over?'#7fa596':'#C2603F';$('#fcDial').innerHTML=buildFace()+`<path d="${wedgePath(120,120,98,s.frac,!s.free)}" fill="${col}" opacity="${t.paused?.55:.95}"/>${buildNums()}<circle cx="120" cy="120" r="10" fill="#24322e"/><circle cx="120" cy="120" r="3" fill="#fff"/>`;
 $('#fcTime').textContent=s.free?fmtClock(ms):s.over?'+'+fmtClock(ms-g*60000):fmtClock(s.left);$('#fcTime').classList.toggle('bonus',!!s.over);
-$('#fcLabel').textContent=t.paused?'잠깐 쉬는 중':s.free?'자유 타이머':s.over?'보너스 시간':g===dailyGoal()?`오늘의 ${g}분`:`${g}분 집중`;
+$('#fcLabel').textContent=t.paused?'잠깐 쉬는 중':s.free?'자유 타이머':s.over?'보너스 시간':t.fill?`오늘 남은 ${g}분 · 목표 ${dailyGoal()}분`:g===dailyGoal()?`오늘의 ${g}분`:`${g}분 집중`;
 $('#fcStatus').textContent=wakeLock?'집중 모드 · 화면 켜둠':'집중 모드';$('#fcBook').textContent=`『${b.title}』${b.author?' · '+b.author:''}`;
 $('#fcPause').textContent=t.paused?'▶ 다시 읽기':'❚❚ 잠깐 쉬기';
-const gl=FC_GOALS.map(v=>`<button type="button" class="${v===g?'on':''}" data-g="${v}">${v?v+'분':'자유'}</button>`).join('');if($('#fcGoals').dataset.k!==gl){$('#fcGoals').innerHTML=gl;$('#fcGoals').dataset.k=gl}
+const gl=(FC_GOALS.includes(g)?FC_GOALS:[g,...FC_GOALS]).map(v=>`<button type="button" class="${v===g?'on':''}" data-g="${v}">${v?(v===g&&t.fill?`남은 ${v}분`:v+'분'):'자유'}</button>`).join('');if($('#fcGoals').dataset.k!==gl){$('#fcGoals').innerHTML=gl;$('#fcGoals').dataset.k=gl}
 const dm=todayMinutes(),dg=dailyGoal();$('#fcNote').textContent=dm>=dg?`오늘 ${dm}분 읽었어요 · 목표 달성 ✓`:`오늘 ${dm}분 / ${dg}분`}
 $('#fcClose').onclick=closeFocus;$('#timerOpen').onclick=openFocus;
 $('#fcPause').onclick=()=>$('#timerPause').click();
 $('#fcLog').onclick=()=>{const t=getTimer();if(!t)return;closeFocus();openLog(t.bookId,{minutes:timerMin(t)})};
 $('#fcPartyMore').onclick=()=>$('#fcParty').classList.add('hidden');$('#fcPartyLog').onclick=()=>$('#fcLog').click();
-$('#fcGoals').onclick=e=>{const b=e.target.closest('[data-g]');if(!b)return;const t=getTimer();if(!t)return;const g=+b.dataset.g;t.goal=g;t.done=g?timerMs(t)>=g*60000:false;saveTimerRaw(t);renderTimer()};
+$('#fcGoals').onclick=e=>{const b=e.target.closest('[data-g]');if(!b)return;const t=getTimer();if(!t)return;const g=+b.dataset.g;if(g!==tGoal(t))t.fill=false;t.goal=g;t.done=g?timerMs(t)>=g*60000:false;saveTimerRaw(t);renderTimer()};
 let dailyKey='';function dailyTick(){const k=todayMinutes()+'|'+today()+'|'+dailyGoal()+'|'+(getTimer()?1:0);if(k!==dailyKey){dailyKey=k;renderDaily()}}
 function renderDaily(){const el=$('#dailyGoal');if(!el)return;if(!state.books.length){el.innerHTML='';return}const g=dailyGoal(),dm=todayMinutes(),st=streakDays(),C=2*Math.PI*26,p=Math.min(1,dm/g),t=getTimer();
 const now=new Date(),mon=new Date(now);mon.setDate(now.getDate()-((now.getDay()+6)%7));const wk=['월','화','수','목','금','토','일'].map((x,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);const ds=ymd(d),m=ds===today()?dm:minutesOn(ds),fut=ds>today();return`<div class="dg-day${ds===today()?' today':''}"><span>${x}</span><i class="${fut?'fut':m>=g?'met':m>0?'part':''}">${m>=g?'✓':''}</i></div>`}).join('');

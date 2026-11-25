@@ -23,9 +23,10 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
 
   // 앱 화면: 인터넷이 되면 항상 최신판, 안 되면 저장해 둔 판
+  // (cache:'no-cache' = 브라우저가 들고 있던 10분짜리 사본 대신 서버에 새 판이 있는지 꼭 확인)
   if (req.mode === 'navigate') {
     e.respondWith(
-      fetch(req)
+      fetch(req, { cache: 'no-cache' })
         .then(res => { const copy = res.clone(); caches.open(SHELL).then(c => c.put('./index.html', copy)); return res; })
         .catch(() => caches.match('./index.html'))
     );

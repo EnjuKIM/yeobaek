@@ -148,6 +148,7 @@
 <div class="settings-row col"><div><strong>하루 독서 목표</strong><p>집중 타이머의 기본 시간이자, 서재 위 ‘오늘의 목표’ 링의 기준이에요. 이 기기에만 저장돼요.</p></div><div class="inline-add"><input id="dailyGoalInput" type="number" inputmode="numeric" min="5" max="600" step="5" placeholder="30"><button class="soft-btn" id="dailyGoalSave">분으로 저장</button></div></div>
 <div class="settings-row col"><div><strong>책 검색 (카카오)</strong><p id="kakaoInfo"></p></div><div class="inline-add"><input id="kakaoKey" type="password" placeholder="카카오 REST API 키 붙여넣기" autocomplete="off" spellcheck="false"><button class="soft-btn" id="kakaoSave">저장</button></div></div>
 <div class="settings-row col"><div><strong>분야 자동 채우기 (국립중앙도서관)</strong><p id="nlInfo"></p></div><div class="inline-add"><input id="nlKey" type="password" placeholder="도서관 인증키 붙여넣기" autocomplete="off" spellcheck="false"><button class="soft-btn" id="nlSave">저장</button></div></div>
+<div class="settings-row col"><div><strong>예전 책 빈칸 채우기</strong><p id="fillInfo"></p></div><div><button class="soft-btn" id="fillBtn">빈 쪽수·분야 채우기</button></div></div>
 <div class="settings-row"><div><strong>저장 상태</strong><p id="storageInfo"></p></div></div>
 <div class="settings-row"><div><strong>전체 초기화</strong><p>모든 독서 기록을 삭제합니다. 되돌릴 수 없습니다.</p></div><button class="danger-btn" id="resetBtn">초기화</button></div>
 </div></div></article></div>
@@ -668,14 +669,39 @@ function nlPages(d){const s=String(d&&d.PAGE||'');const m=s.match(/(\d{1,4})\s*(
 async function autoCategory(isbn){const key=getNlKey();if(!key||!isbn||!navigator.onLine)return;const myN=++nlReq,my=++catReq;
 try{const d=await nlLookup(isbn,key);if(myN!==nlReq||!isOpen('#formModal'))return;
 const pg=nlPages(d);if(pg){const nt=$('#bsNote'),base=nt.textContent.replace(' 전체 쪽수는 직접 넣어주세요.','');if($('#fUnit').value==='page'){if(!num($('#fTotal').value)){$('#fTotal').value=pg;nt.textContent=base+` 전체 ${pg}쪽도 넣었어요.`;markDirty()}}else nt.textContent=base+` (종이책 기준 ${pg}쪽)`}
-if(my!==catReq||($('#fCategory').value.trim()&&!catAuto))return;const m=d&&kdcToCat(d.KDC,d.EA_ADD_CODE||d.SET_ADD_CODE);if(!m){if(catAuto){$('#fCategory').value='';if(catAutoTag)$('#fTags').value=split($('#fTags').value).filter(t=>t!==catAutoTag).join(', ');catAuto=false;catAutoTag='';$('#catAutoNote').textContent='';syncCatPicker()}$('#bsNote').textContent+=' 도서관에 분야 정보가 없어서 분야는 직접 골라주세요.';return}
-if($('#fCategory').value.trim()&&!catAuto)return;$('#fCategory').value=m.cat;catAuto=true;let tagMsg='';const tags=split($('#fTags').value).filter(t=>!catAutoTag||t!==catAutoTag);catAutoTag='';if(m.tag){if(!tags.includes(m.tag)){tags.push(m.tag);catAutoTag=m.tag}tagMsg=` · #${m.tag}`}$('#fTags').value=tags.join(', ');
+if(my!==catReq||(!catBlank($('#fCategory').value)&&!catAuto))return;const m=d&&kdcToCat(d.KDC,d.EA_ADD_CODE||d.SET_ADD_CODE);if(!m){if(catAuto){$('#fCategory').value='';if(catAutoTag)$('#fTags').value=split($('#fTags').value).filter(t=>t!==catAutoTag).join(', ');catAuto=false;catAutoTag='';$('#catAutoNote').textContent='';syncCatPicker()}$('#bsNote').textContent+=' 도서관에 분야 정보가 없어서 분야는 직접 골라주세요.';return}
+if(!catBlank($('#fCategory').value)&&!catAuto)return;$('#fCategory').value=m.cat;catAuto=true;let tagMsg='';const tags=split($('#fTags').value).filter(t=>!catAutoTag||t!==catAutoTag);catAutoTag='';if(m.tag){if(!tags.includes(m.tag)){tags.push(m.tag);catAutoTag=m.tag}tagMsg=` · #${m.tag}`}$('#fTags').value=tags.join(', ');
 syncCatPicker();$('#catAutoNote').textContent='· 도서관 분류로 자동 선택 (다르면 눌러서 바꾸세요)';$('#bsNote').textContent+=` 분야: ${m.cat}${tagMsg} (자동)`;markDirty()}
 catch(e){if(myN===nlReq&&e.message==='key')$('#bsNote').textContent+=' 도서관 키가 맞지 않아 분야는 못 채웠어요. 설정에서 확인해 주세요.'}}
 function renderNlInfo(){const k=getNlKey();$('#nlInfo').innerHTML=k?'연결됨 · 책을 검색해서 고르면 분야와 세부 태그, 그리고 도서관에 있으면 전체 쪽수도 자동으로 채워져요. 키는 이 기기에만 저장되고 백업 파일에는 들어가지 않아요.':'국립중앙도서관(nl.go.kr) 오픈 API <b>인증키</b>를 넣으면, 책을 고를 때 분야(소설·인문 등)와 세부 태그(한국소설 등), 전체 쪽수가 자동으로 채워져요. 위의 카카오 키도 함께 있어야 해요.';$('#nlKey').value='';$('#nlKey').placeholder=k?`저장됨 (…${k.slice(-4)}) · 바꾸려면 새 키 입력`:'도서관 인증키 붙여넣기'}
 $('#nlSave').onclick=async()=>{const v=$('#nlKey').value.trim();if(!v){if(getNlKey()&&confirm('저장된 도서관 키를 지울까요?')){try{localStorage.removeItem(NL_KEY)}catch(_){}renderNlInfo()}return}if(!/^[A-Za-z0-9_\-]{10,128}$/.test(v)){alert('키 모양이 맞지 않아요. 도서관에서 받은 인증키를 그대로 붙여넣어 주세요.');return}
 $('#nlInfo').textContent='확인 중…';try{await nlLookup('9788937460449',v);try{localStorage.setItem(NL_KEY,v)}catch(_){}renderNlInfo();notify('분야 자동 채우기를 연결했어요.')}catch(e){renderNlInfo();alert(e.message==='key'?'도서관에서 이 인증키를 받아주지 않았어요. 승인이 끝났는지, 키를 빠짐없이 붙여넣었는지 확인해 주세요.':`지금은 확인하지 못했어요 (${e.message}). 인터넷 연결을 확인하고 다시 저장해 주세요.`)}};
 $('#nlKey').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();$('#nlSave').click()}};
+/* 예전 책 빈칸 채우기: 제목·저자로 카카오에서 ISBN을 찾고 → 도서관 정보로 빈 쪽수·분야만 채움 (적어 둔 값은 그대로) */
+const catBlank=c=>{c=String(c||'').trim();return !c||c==='기타'};
+let filling=false;
+const FILL_DEFAULT='쪽수나 분야가 비어 있는 책을 찾아 도서관 정보로 한 번에 채워요. 이미 적어 둔 값은 바꾸지 않아요.';
+const needFill=b=>b.title&&((b.unit==='page'&&!b.totalPages)||catBlank(b.category));
+function renderFillInfo(){if(filling)return;const n=state.books.filter(needFill).length;$('#fillInfo').textContent=FILL_DEFAULT+(n?` (지금 ${n}권)`:' (지금은 빈칸 있는 책이 없어요)')}
+const normT=s=>String(s||'').replace(/\(.*?\)|\[.*?\]/g,'').replace(/[\s\p{P}\p{S}]/gu,'').toLowerCase();
+async function findIsbnFor(b){const t=normT(b.title),au=String(b.author||'').split(',')[0].trim();
+const pick=items=>{const w=items.filter(it=>it.isbn);return w.find(it=>normT(it.title)===t)||w.find(it=>{const x=normT(it.title);return x&&t&&(x.startsWith(t)||t.startsWith(x))})};
+let hit=pick((await searchBooks(au?b.title+' '+au:b.title)).items);if(!hit&&au)hit=pick((await searchBooks(b.title)).items);return hit?hit.isbn:''}
+$('#fillBtn').onclick=async()=>{if(filling)return;const nk=getNlKey(),kk=getKakaoKey();if(!kk||!nk){alert('카카오 키와 도서관 키가 둘 다 설정에 있어야 해요.');return}if(!navigator.onLine){alert('인터넷에 연결된 뒤 다시 눌러 주세요.');return}
+const todo=state.books.filter(needFill).map(b=>b.id);if(!todo.length){notify('빈칸이 있는 책이 없어요.');return}
+if(!confirm(`쪽수나 분야가 비어 있는 책 ${todo.length}권을 도서관 정보로 채울까요?\n이미 적어 둔 값은 바꾸지 않아요.`))return;
+filling=true;const btn=$('#fillBtn'),info=$('#fillInfo');btn.disabled=true;let pages=0,cats=0,stop=false;const miss=[];
+try{for(let i=0;i<todo.length&&!stop;i++){const b0=findBook(todo[i]);if(!b0)continue;info.textContent=`찾는 중… ${i+1}/${todo.length} ‘${b0.title}’`;
+try{const isbn=await findIsbnFor(b0),d=isbn?await nlLookup(isbn,nk):null,b=findBook(todo[i]);if(!b)continue;let ch=false;
+if(d&&b.unit==='page'&&!b.totalPages){const pg=nlPages(d);if(pg&&!(num(b.currentPage)>pg)){b.totalPages=pg;pages++;ch=true}}
+if(d&&catBlank(b.category)){const m=kdcToCat(d.KDC,d.EA_ADD_CODE||d.SET_ADD_CODE);if(m){b.category=m.cat;const tg=Array.isArray(b.tags)?b.tags:[];if(m.tag&&!tg.includes(m.tag))b.tags=[...tg,m.tag];cats++;ch=true}}
+if(ch)b.updatedAt=Date.now();if(needFill(b))miss.push(b.title)}
+catch(e){if(e.message==='key'){stop=true;alert('키가 맞지 않아 멈췄어요. 설정에서 카카오·도서관 키를 확인해 주세요.')}else miss.push(b0.title)}
+await new Promise(r=>setTimeout(r,250))}
+if(pages||cats){if(await persist())refresh()}}
+finally{filling=false;btn.disabled=false}
+const msg=pages||cats?`쪽수 ${pages}권, 분야 ${cats}권을 채웠어요.`:'새로 채운 책이 없어요.';
+info.textContent=msg+(miss.length?` 아직 빈칸인 책 ${miss.length}권(${miss.slice(0,4).map(t=>`‘${t}’`).join(', ')}${miss.length>4?' 외':''})은 도서관에 정보가 없거나 못 찾았어요. 수정에서 직접 넣어 주세요.`:'');notify(msg)};
 function renderKakaoInfo(){const k=getKakaoKey();$('#kakaoInfo').innerHTML=k?'연결됨 · 한국 책이 잘 찾아져요. 키는 이 기기에만 저장되고 백업 파일에는 들어가지 않아요.':'키가 없으면 해외 책 위주로 찾아져요. developers.kakao.com에서 앱을 하나 만들고 <b>REST API 키</b>를 붙여넣으면 한국 책이 잘 찾아져요.';$('#kakaoKey').value='';$('#kakaoKey').placeholder=k?`저장됨 (…${k.slice(-4)}) · 바꾸려면 새 키 입력`:'카카오 REST API 키 붙여넣기'}
 $('#kakaoSave').onclick=async()=>{const v=$('#kakaoKey').value.trim();if(!v){if(getKakaoKey()&&confirm('저장된 카카오 키를 지울까요?')){try{localStorage.removeItem(KAKAO_KEY)}catch(_){}renderKakaoInfo()}return}if(!/^[A-Za-z0-9]{20,64}$/.test(v)){alert('키 모양이 맞지 않아요. REST API 키(영문·숫자 32자)를 그대로 붙여넣어 주세요.');return}
 $('#kakaoInfo').textContent='확인 중…';try{const r=await fetch('https://dapi.kakao.com/v3/search/book?size=1&query='+encodeURIComponent('데미안'),{headers:{Authorization:'KakaoAK '+v}});if(!r.ok)throw Error(String(r.status));try{localStorage.setItem(KAKAO_KEY,v)}catch(_){}renderKakaoInfo();notify('카카오 책 검색을 연결했어요.')}catch(e){renderKakaoInfo();alert(`이 키로 검색하지 못했어요 (${e.message}). REST API 키가 맞는지, 카카오 앱 설정에서 검색 기능을 쓸 수 있는지 확인해 주세요.`)}};
@@ -776,7 +802,7 @@ $('#prevYear').onclick=()=>{timelineYear--;renderTimeline()};$('#nextYear').oncl
 
 /* ---------- 설정·백업 ---------- */
 function openSettings(){renderSettings();openModal('#settingsModal')}
-async function renderSettings(){renderKakaoInfo();renderNlInfo();$('#dailyGoalInput').value='';$('#dailyGoalInput').placeholder=`${dailyGoal()}분`;const l=state.lastBackupAt,ch=state.changes||0;$('#backupInfo').innerHTML=l?`마지막 백업: ${esc(ymd(new Date(l)))} (${daysAgo(l)?daysAgo(l)+'일 전':'오늘'})${ch?` · <span style="color:var(--clay)">그 뒤 바뀐 기록 ${ch}건</span>`:' · 최신 상태'}`:'<span style="color:var(--red)">아직 백업한 적이 없습니다.</span>';
+async function renderSettings(){renderKakaoInfo();renderNlInfo();renderFillInfo();$('#dailyGoalInput').value='';$('#dailyGoalInput').placeholder=`${dailyGoal()}분`;const l=state.lastBackupAt,ch=state.changes||0;$('#backupInfo').innerHTML=l?`마지막 백업: ${esc(ymd(new Date(l)))} (${daysAgo(l)?daysAgo(l)+'일 전':'오늘'})${ch?` · <span style="color:var(--clay)">그 뒤 바뀐 기록 ${ch}건</span>`:' · 최신 상태'}`:'<span style="color:var(--red)">아직 백업한 적이 없습니다.</span>';
 $('#usageManager').innerHTML=state.usageTags.map((t,i)=>`<button type="button" class="on" data-i="${i}" aria-label="${esc(t)} 태그 삭제">${esc(t)}<span class="x">✕</span></button>`).join('')||'<p class="draft-note">태그가 없습니다.</p>';
 let info=storeMode==='idb'?'IndexedDB에 저장 중 (사진이 많아도 넉넉해요)':'localStorage에 저장 중 (약 5MB 제한)';$('#storageInfo').textContent=info;try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();if(e&&e.usage!=null)$('#storageInfo').textContent=info+` · 사용 ${(e.usage/1048576).toFixed(1)}MB`}}catch(e){}}
 $('#settingsBtn').onclick=openSettings;
